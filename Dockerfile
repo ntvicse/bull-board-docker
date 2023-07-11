@@ -1,8 +1,8 @@
-FROM node:16.13-alpine
+FROM node:18.16.1-alpine
 
-WORKDIR /usr/app
+WORKDIR /app
 
-COPY ./package.json .
+COPY ./package.build.json ./package.json
 COPY ./yarn.lock .
 
 ENV NODE_ENV production

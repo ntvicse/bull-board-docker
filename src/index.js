@@ -15,39 +15,19 @@ const {authRouter} = require('./login');
 const config = require('./config');
 
 const redisConfig = {
-	redis: {
-		port: config.REDIS_PORT,
-		host: config.REDIS_HOST,
-		db: config.REDIS_DB,
-		...(config.REDIS_PASSWORD && {password: config.REDIS_PASSWORD}),
-		tls: config.REDIS_USE_TLS === 'true',
-	},
+  url: `redis://${config.REDIS_HOST}:${config.REDIS_PORT}/${config.REDIS_DB}`,
+  host: config.REDIS_HOST,
+  port: config.REDIS_PORT,
+  ...(config.REDIS_PASSWORD && {password: config.REDIS_PASSWORD}),
+  tls: config.REDIS_USE_TLS === 'true',
+  database: config.REDIS_DB,
+  pingInterval: 30000,
 };
 
 const serverAdapter = new ExpressAdapter();
-const client = redis.createClient(redisConfig.redis);
+const client = redis.createClient(redisConfig);
 const {setQueues} = createBullBoard({queues: [], serverAdapter});
 const router = serverAdapter.getRouter();
-
-client.KEYS(`${config.BULL_PREFIX}:*`, (err, keys) => {
-	const uniqKeys = new Set(keys.map(key => key.replace(/^.+?:(.+?):.+?$/, '$1')));
-	const queueList = Array.from(uniqKeys).sort().map(
-		(item) => {
-			if (config.BULL_VERSION === 'BULLMQ') {
-				const options = { connection: redisConfig.redis };
-				if (config.BULL_PREFIX) {
-					options.prefix = config.BULL_PREFIX;
-				}
-				return new BullMQAdapter(new bullmq.Queue(item, options));
-			}
-
-			return new BullAdapter(new Queue(item, redisConfig));
-		}
-	);
-
-	setQueues(queueList);
-	console.log('done!')
-});
 
 const app = express();
 
@@ -91,7 +71,33 @@ if (config.AUTH_ENABLED) {
 	app.use(config.HOME_PAGE, router);
 }
 
-app.listen(config.PORT, () => {
-	console.log(`bull-board is started http://localhost:${config.PORT}${config.HOME_PAGE}`);
-	console.log(`bull-board is fetching queue list, please wait...`);
-});
+async function start() {
+  await client.connect();
+
+  console.log(`bull-board is fetching queue list, please wait...`);
+
+  const keys = await client.KEYS(`${config.BULL_PREFIX}:*`);
+  const uniqKeys = new Set(keys.map(key => key.replace(/^.+?:(.+?):.+?$/, '$1')));
+  const queueList = Array.from(uniqKeys).sort().map(
+    (item) => {
+      if (config.BULL_VERSION === 'BULLMQ') {
+        const options = { connection: redisConfig };
+        if (config.BULL_PREFIX) {
+          options.prefix = config.BULL_PREFIX;
+        }
+        return new BullMQAdapter(new bullmq.Queue(item, options));
+      }
+
+      return new BullAdapter(new Queue(item, redisConfig));
+    }
+  );
+  
+  setQueues(queueList);
+  console.log('done!');
+
+  app.listen(config.PORT, () => {
+    console.log(`bull-board is started http://localhost:${config.PORT}${config.HOME_PAGE}`);
+  });
+}
+
+start();
