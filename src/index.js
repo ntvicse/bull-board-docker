@@ -26,7 +26,7 @@ const redisConfig = {
 
 const serverAdapter = new ExpressAdapter();
 const client = redis.createClient(redisConfig);
-const {setQueues} = createBullBoard({queues: [], serverAdapter});
+const {setQueues, replaceQueues} = createBullBoard({queues: [], serverAdapter});
 const router = serverAdapter.getRouter();
 
 const app = express();
@@ -71,13 +71,13 @@ if (config.AUTH_ENABLED) {
 	app.use(config.HOME_PAGE, router);
 }
 
-async function start() {
-  await client.connect();
-
-  console.log(`bull-board is fetching queue list, please wait...`);
+async function fetchQueue() {
+  console.log(`bull-board is fetching and updating queue list`);
 
   const keys = await client.KEYS(`${config.BULL_PREFIX}:*`);
+
   const uniqKeys = new Set(keys.map(key => key.replace(/^.+?:(.+?):.+?$/, '$1')));
+
   const queueList = Array.from(uniqKeys).sort().map(
     (item) => {
       if (config.BULL_VERSION === 'BULLMQ') {
@@ -91,9 +91,21 @@ async function start() {
       return new BullAdapter(new Queue(item, redisConfig));
     }
   );
-  
-  setQueues(queueList);
-  console.log('done!');
+
+  replaceQueues(queueList);
+}
+
+app.use('/update', async (req, res, next) => {
+  await fetchQueue();
+  res.redirect('/');
+});
+
+async function start() {
+  await client.connect();
+
+  await fetchQueue();
+
+  console.log('done!')
 
   app.listen(config.PORT, () => {
     console.log(`bull-board is started http://localhost:${config.PORT}${config.HOME_PAGE}`);
