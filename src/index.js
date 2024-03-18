@@ -27,6 +27,8 @@ const redisConfig = {
 const serverAdapter = new ExpressAdapter();
 const client = redis.createClient(redisConfig);
 const {setQueues, replaceQueues} = createBullBoard({queues: [], serverAdapter});
+serverAdapter.setBasePath(config.HOME_PAGE);
+
 const router = serverAdapter.getRouter();
 
 const app = express();
@@ -64,12 +66,21 @@ app.use(passport.initialize({}));
 app.use(passport.session({}));
 app.use(bodyParser.urlencoded({extended: false}));
 
+router.use('/update', async (req, res, next) => {
+  await fetchQueue();
+  res.redirect(config.HOME_PAGE);
+});
+
 if (config.AUTH_ENABLED) {
 	app.use(config.LOGIN_PAGE, authRouter);
 	app.use(config.HOME_PAGE, ensureLoggedIn(config.LOGIN_PAGE), router);
 } else {
 	app.use(config.HOME_PAGE, router);
 }
+
+app.all('*', function(req, res) {
+  res.redirect(config.HOME_PAGE);
+});
 
 async function fetchQueue() {
   console.log(`bull-board is fetching and updating queue list`);
@@ -94,11 +105,6 @@ async function fetchQueue() {
 
   replaceQueues(queueList);
 }
-
-app.use('/update', async (req, res, next) => {
-  await fetchQueue();
-  res.redirect('/');
-});
 
 async function start() {
   await client.connect();
