@@ -50,7 +50,7 @@ app.use((req, res, next) => {
 });
 
 const sessionOpts = {
-	name: 'bull-board.sid',
+	name: config.SESSION_NAME,
 	secret: Math.random().toString(),
 	resave: false,
 	saveUninitialized: false,
